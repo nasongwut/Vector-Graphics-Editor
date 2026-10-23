@@ -1,0 +1,2 @@
+# Vectra uses only the Python standard library (tkinter).
+# Python 3.8+ with Tk 8.6 is required. Nothing to pip install.
