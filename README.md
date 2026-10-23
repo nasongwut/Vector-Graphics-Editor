@@ -12,6 +12,29 @@ python3 -m unittest discover tests     # รันเทสต์ (ไม่ต�
 ต้องใช้ Python 3.8+ ที่มี Tk 8.6 (macOS: ใช้ Python จาก python.org หรือ `brew install python-tk`)
 กด **F1** ในโปรแกรมเพื่อดูคีย์ลัดทั้งหมด · เปลี่ยนภาษาที่มุมขวาล่าง (TH | EN) หรือ Edit ▸ Language
 
+## ดาวน์โหลด / ติดตั้ง
+
+ไฟล์ติดตั้งสร้างอัตโนมัติด้วย GitHub Actions (`.github/workflows/build.yml`) ทุกครั้งที่ push
+ดาวน์โหลดได้จากหน้า **Actions ▸ (รันล่าสุด) ▸ Artifacts** หรือหน้า **Releases** เมื่อ push tag `v*`
+
+| ระบบ | ไฟล์ | หมายเหตุ |
+|---|---|---|
+| Windows 10 / 11 (64-bit) | `Vectra-Setup-<ver>-win-x64.exe` | ตัวติดตั้งแบบ Wizard (ไทย/อังกฤษ) · เลือกติดตั้งเฉพาะผู้ใช้หรือทั้งเครื่อง · ไอคอนเดสก์ท็อป · เลือกให้เปิด .ai/.eps ด้วย Vectra · ถอนการติดตั้งได้จาก Settings |
+| macOS ชิป M (Apple Silicon) | `Vectra-<ver>-macos-apple-silicon.dmg` | macOS 11 ขึ้นไป · ลาก Vectra ไปที่ Applications |
+| macOS Intel | `Vectra-<ver>-macos-intel.dmg` | macOS 11 ขึ้นไป |
+
+ไฟล์ยังไม่ได้เซ็นด้วยใบรับรองนักพัฒนา จึงมีคำเตือนตอนเปิดครั้งแรก:
+- **Windows:** SmartScreen ขึ้น "Windows protected your PC" → กด *More info* → *Run anyway*
+- **macOS:** คลิกขวาที่ Vectra → *Open* → *Open* (หรือ System Settings ▸ Privacy & Security ▸ *Open Anyway*)
+
+### Build เอง
+```bash
+pip install pyinstaller pillow
+bash packaging/macos/build_dmg.sh                                         # macOS → dist/*.dmg
+powershell -ExecutionPolicy Bypass -File packaging\windows\build_installer.ps1   # Windows (ต้องมี Inno Setup)
+git tag v3.3.0 && git push origin v3.3.0                                  # สร้าง Release พร้อมไฟล์ติดตั้งทั้ง 3 ตัว
+```
+
 ## เครื่องมือ
 
 | กลุ่ม | เครื่องมือ (คีย์ลัด) |
@@ -97,7 +120,10 @@ vectra/
     tooling/                เครื่องมือ 1 คลาสต่อ 1 เครื่องมือ
     interaction.py commands.py style.py files.py shortcuts.py
     renderer.py smart_guides.py text_editor.py dialogs.py icons.py theme.py widgets.py
-tests/test_model.py
+  assets/icon.png          ไอคอนหน้าต่าง
+packaging/                  vectra.spec (PyInstaller) · windows/vectra.iss (Inno Setup wizard) · macos/build_dmg.sh
+.github/workflows/build.yml  CI: เทสต์ + build Windows / macOS Intel / macOS Apple Silicon
+tests/test_model.py  tests/test_import.py
 ```
 
 เพิ่มเครื่องมือใหม่: สร้างคลาสใน `ui/tooling/` (สืบทอด `Tool`), เพิ่มใน `TOOL_CLASSES`/`TOOL_GROUPS`,

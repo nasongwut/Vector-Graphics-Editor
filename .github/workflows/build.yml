@@ -1,0 +1,136 @@
+name: Build installers
+
+# Every push / PR: run tests and build all installers (downloadable from the run's "Artifacts").
+# Push a tag like v3.3.0: the same builds are attached to a GitHub Release.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+  windows:
+    name: Windows 10/11 x64 installer
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          architecture: x64
+      - name: Install build tools
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller pillow
+          $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) {
+            $cands = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 7\ISCC.exe",
+                       "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe")
+            $iscc = $cands | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = Get-ChildItem "$env:ProgramFiles*\Inno Setup*\ISCC.exe" | Select-Object -First 1 -ExpandProperty FullName
+          }
+          Write-Host "ISCC: $iscc"
+          Split-Path $iscc | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Unit tests
+        run: python -m unittest discover -s tests
+      - name: Build app + installer wizard
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File packaging\windows\build_installer.ps1
+      - name: Smoke test (app starts)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\Vectra\Vectra.exe -PassThru
+          Start-Sleep -Seconds 8
+          if ($p.HasExited) { throw "Vectra.exe exited early (code $($p.ExitCode))" }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "Vectra.exe is running OK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vectra-windows-x64
+          path: dist/installer/*.exe
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.label }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel     # Intel Macs
+            arch: x86_64
+            label: intel
+          - runner: macos-15           # Apple Silicon (M1/M2/M3/M4…)
+            arch: arm64
+            label: apple-silicon
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install build tools
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pyinstaller pillow
+          python3 -c "import platform, tkinter; print(platform.machine(), tkinter.TkVersion)"
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests
+      - name: Build Vectra.app + DMG
+        env:
+          VECTRA_TARGET_ARCH: ${{ matrix.arch }}
+        run: bash packaging/macos/build_dmg.sh
+      - name: Check architecture
+        run: |
+          file dist/Vectra.app/Contents/MacOS/Vectra
+          file dist/Vectra.app/Contents/MacOS/Vectra | grep -q "${{ matrix.arch }}"
+      - name: Smoke test (app starts)
+        run: |
+          dist/Vectra.app/Contents/MacOS/Vectra &
+          PID=$!
+          sleep 10
+          kill -0 $PID || { echo "Vectra exited early"; exit 1; }
+          kill $PID
+          echo "Vectra is running OK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vectra-macos-${{ matrix.label }}
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - run: ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true

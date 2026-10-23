@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+build/
+dist/
+_backup/
+packaging/windows/version_info.txt
+packaging/windows/Thai.isl
+*.spec.bak
+.venv/
